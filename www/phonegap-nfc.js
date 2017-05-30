@@ -1,3 +1,4 @@
+cordova.define("phonegap-nfc.NFC", function(require, exports, module) {
 /*jshint  bitwise: false, camelcase: false, quotmark: false, unused: vars */
 /*global cordova, console */
 "use strict";
@@ -15,7 +16,7 @@ function handleNfcFromIntentFilter() {
             function () {
                 cordova.exec(
                     function () {
-                        console.log("Initialized the NfcPlugin");
+                        console.log("Initialized the NfcPlugin!");
                     },
                     function (reason) {
                         console.log("Failed to initialize the NfcPlugin " + reason);
@@ -434,7 +435,28 @@ var nfc = {
 
     write: function (ndefMessage, win, fail) {
         cordova.exec(win, fail, "NfcPlugin", "writeTag", [ndefMessage]);
+
     },
+
+    lock: function (password, win, fail) {
+             console.log("phonegap-nfc.js, LOCK");
+             cordova.exec(win, fail, "NfcPlugin", "lockTag", [password]);
+
+    },
+
+    unlock: function (password, win, fail) {
+            cordova.exec(win, fail, "NfcPlugin", "unLockTag", [password]);
+    },
+
+    serial: function (win, fail) {
+            console.log("phonegap-nfc.js, LOCK");
+            cordova.exec(win, fail, "NfcPlugin", "readSerial", []);
+    },
+
+     isLocked: function (win, fail) {
+            console.log("phonegap-nfc.js, LOCK");
+            cordova.exec(win, fail, "NfcPlugin", "lockStatus", []);
+      },
 
     makeReadOnly: function (win, fail) {
         cordova.exec(win, fail, "NfcPlugin", "makeReadOnly", []);
@@ -739,3 +761,5 @@ window.nfc = nfc;
 window.ndef = ndef;
 window.util = util;
 window.fireNfcTagEvent = fireNfcTagEvent;
+
+});

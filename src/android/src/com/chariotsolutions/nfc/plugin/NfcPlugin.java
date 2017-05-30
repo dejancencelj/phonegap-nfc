@@ -5,6 +5,7 @@ import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import  java.util.Arrays;
 
 // using wildcard imports so we can support Cordova 3.x
 import org.apache.cordova.*; // Cordova 3.x
@@ -29,7 +30,10 @@ import android.nfc.TagLostException;
 import android.nfc.tech.Ndef;
 import android.nfc.tech.NdefFormatable;
 import android.os.Parcelable;
+import android.text.TextUtils;
 import android.util.Log;
+
+import com.smartrac.nfc.*;
 
 public class NfcPlugin extends CordovaPlugin implements NfcAdapter.OnNdefPushCompleteCallback {
     private static final String REGISTER_MIME_TYPE = "registerMimeType";
@@ -40,6 +44,13 @@ public class NfcPlugin extends CordovaPlugin implements NfcAdapter.OnNdefPushCom
     private static final String REGISTER_DEFAULT_TAG = "registerTag";
     private static final String REMOVE_DEFAULT_TAG = "removeTag";
     private static final String WRITE_TAG = "writeTag";
+
+    private static final String LOCK_TAG = "lockTag";
+    private static final String UN_LOCK_TAG = "unlockTag";
+
+    private static final String READ_SERIAL = "readSerial";
+    private static final String IS_LOCKED = "isLocked";
+
     private static final String MAKE_READ_ONLY = "makeReadOnly";
     private static final String ERASE_TAG = "eraseTag";
     private static final String SHARE_TAG = "shareTag";
@@ -71,6 +82,8 @@ public class NfcPlugin extends CordovaPlugin implements NfcAdapter.OnNdefPushCom
 
     private CallbackContext shareTagCallback;
     private CallbackContext handoverCallback;
+
+
 
     @Override
     public boolean execute(String action, JSONArray data, CallbackContext callbackContext) throws JSONException {
@@ -114,6 +127,18 @@ public class NfcPlugin extends CordovaPlugin implements NfcAdapter.OnNdefPushCom
 
         } else if (action.equalsIgnoreCase(WRITE_TAG)) {
             writeTag(data, callbackContext);
+
+        } else if (action.equalsIgnoreCase(LOCK_TAG)) {
+          lockTag(data, callbackContext);
+
+        } else if (action.equalsIgnoreCase(UN_LOCK_TAG)) {
+          unlockTag(data, callbackContext);
+
+        } else if (action.equalsIgnoreCase(IS_LOCKED)) {
+          lockStatus(callbackContext);
+
+        } else if (action.equalsIgnoreCase(READ_SERIAL)) {
+          readSerial(callbackContext);
 
         } else if (action.equalsIgnoreCase(MAKE_READ_ONLY)) {
             makeReadOnly(callbackContext);
@@ -241,6 +266,214 @@ public class NfcPlugin extends CordovaPlugin implements NfcAdapter.OnNdefPushCom
         Tag tag = savedIntent.getParcelableExtra(NfcAdapter.EXTRA_TAG);
         NdefRecord[] records = Util.jsonToNdefRecords(data.getString(0));
         writeNdefMessage(new NdefMessage(records), tag, callbackContext);
+    }
+
+    private void lockStatus(CallbackContext callbackContext) {
+      if (getIntent() == null) {  // TODO remove this and handle LostTag
+        callbackContext.error("Failed to write tag, received null intent");
+      }
+
+      Tag tag = savedIntent.getParcelableExtra(NfcAdapter.EXTRA_TAG);
+
+      NfcNtag nfca = NfcNtag.get(tag);
+      JSONObject resp = new JSONObject();
+      boolean isLocked = false;
+
+      try {
+        nfca.connect();
+        // boolean isConnected = nfca.isConnected();
+        byte [] zero = nfca.read(NfcNtagOpcode.AUTH_0);
+
+        if(zero != null && zero.length >= 16){
+            if(zero[3] == 0){
+              isLocked = true;
+            }
+        }
+
+
+      } catch (IOException e) {
+        callbackContext.error(1);
+        e.printStackTrace();
+      }
+      finally {
+        if (nfca != null) {
+          try {
+            nfca.close();
+          }
+          catch (IOException e) {
+            callbackContext.error(2);
+            Log.e(TAG, "Error closing tag...", e);
+          }
+        }
+      }
+
+
+      try {
+        resp.put("locked", isLocked);
+      } catch (JSONException e) {
+        e.printStackTrace();
+      }
+
+      callbackContext.success(resp);
+
+    }
+
+    private void readSerial(CallbackContext callbackContext) {
+      if (getIntent() == null) {  // TODO remove this and handle LostTag
+        callbackContext.error("Failed to write tag, received null intent");
+      }
+
+      Tag tag = savedIntent.getParcelableExtra(NfcAdapter.EXTRA_TAG);
+      NfcNtag nfca = NfcNtag.get(tag);
+      JSONObject resp = new JSONObject();
+
+
+      try {
+        nfca.connect();
+        // boolean isConnected = nfca.isConnected();
+        byte [] searial = nfca.read(NfcNtagOpcode.SERIAL);
+        if(searial != null && searial.length >= 16){
+            byte[] rsp = new byte[7];
+            System.arraycopy(searial, 0, rsp, 0, 3);
+            System.arraycopy(searial, 4, rsp, 3, 4);
+            String retVal = "";
+            for (int i = 0; i < rsp.length; i++){
+              retVal = retVal + String.format("%02x", rsp[i]).toUpperCase();
+            }
+
+            //retVal = retVal.substring(0,retVal.length()-1);
+
+            resp.put("serial", retVal);
+        }
+
+
+      } catch (IOException e) {
+        callbackContext.error(1);
+        e.printStackTrace();
+      } catch (JSONException e) {
+        e.printStackTrace();
+      } finally {
+        if (nfca != null) {
+          try {
+            nfca.close();
+          }
+          catch (IOException e) {
+            callbackContext.error(2);
+            Log.e(TAG, "Error closing tag...", e);
+          }
+        }
+      }
+
+
+
+
+      callbackContext.success(resp);
+
+    }
+
+
+    private void lockTag(JSONArray password, CallbackContext callbackContext) throws JSONException {
+        if (getIntent() == null) {  // TODO remove this and handle LostTag
+            callbackContext.error("Failed to write tag, received null intent");
+        }
+
+        Tag tag = savedIntent.getParcelableExtra(NfcAdapter.EXTRA_TAG);
+
+        NfcNtag nfca = NfcNtag.get(tag);
+
+        boolean resp = false;
+        try {
+          nfca.connect();
+          // boolean isConnected = nfca.isConnected();
+          byte[] zero = nfca.read(NfcNtagOpcode.AUTH_0);
+          //byte[] version = nfca.getVersion();
+          //String ver = NfcNtagVersion.fromGetVersion(version).toString();
+
+          String passw = nfca.exstractPass(password);
+
+          byte[] pin = passw.getBytes();
+
+          if(pin.length != 4){
+            callbackContext.error(5);
+          }else{
+            resp = nfca.lockMemory(pin);
+            if(resp == false) {
+              callbackContext.error(6);
+            }
+          }
+
+        } catch (IOException e) {
+            callbackContext.error(1);
+            e.printStackTrace();
+        }
+        finally {
+          if (nfca != null) {
+            try {
+              nfca.close();
+            }
+            catch (IOException e) {
+                callbackContext.error(2);
+                Log.e(TAG, "Error closing tag...", e);
+            }
+          }
+        }
+
+
+        callbackContext.success();
+
+    }
+
+    private void unlockTag(JSONArray password, CallbackContext callbackContext) throws JSONException {
+        if (getIntent() == null) {  // TODO remove this and handle LostTag
+            callbackContext.error("Failed to write tag, received null intent");
+        }
+
+        Tag tag = savedIntent.getParcelableExtra(NfcAdapter.EXTRA_TAG);
+
+        NfcNtag nfca = NfcNtag.get(tag);
+
+        String passw = nfca.exstractPass(password);
+
+
+        boolean resp = false;
+
+        try {
+          nfca.connect();
+          // boolean isConnected = nfca.isConnected();
+          byte[] zero = nfca.read(NfcNtagOpcode.AUTH_0);
+
+          byte[] pin = passw.getBytes(); //UNCOMMENT THIS LATER ON
+
+          if(pin.length != 4){
+            callbackContext.error(5);
+          }else{
+            resp = nfca.unlockMemory(pin);
+            //boolean trap = resp;
+            if(resp == false){
+              callbackContext.error(6);
+            }
+
+          }
+
+        } catch (IOException e) {
+            callbackContext.error(4);
+            e.printStackTrace();
+        }
+        finally {
+          if (nfca != null) {
+            try {
+              nfca.close();
+            }
+            catch (IOException e) {
+                callbackContext.error(3);
+                Log.e(TAG, "Error closing tag...", e);
+            }
+          }
+        }
+
+
+      callbackContext.success();
+
     }
 
     private void writeNdefMessage(final NdefMessage message, final Tag tag, final CallbackContext callbackContext) {
